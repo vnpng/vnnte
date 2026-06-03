@@ -1,0 +1,9 @@
+tools/_tmp/
+ipc/
+logs/
+__pycache__/
+*.pyc
+ok-nte-ref/
+repowiki/
+*.egg-info/
+.venv/
