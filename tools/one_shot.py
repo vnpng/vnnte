@@ -18,6 +18,63 @@ sys.path.insert(0, str(ROOT))
 import cv.capture as cap
 import cv.matcher as mat
 import cv.ocr as ocr_mod
+import cv2
+
+# === 照搬原项目 BaseNTETask 的颜色掩码工具 ===
+def _color_range_to_bound(color_range):
+    """照搬 ok-script color_range_to_bound"""
+    import numpy as np
+    lower = np.array([color_range['b'][0], color_range['g'][0], color_range['r'][0]], dtype="uint8")
+    upper = np.array([color_range['b'][1], color_range['g'][1], color_range['r'][1]], dtype="uint8")
+    return lower, upper
+
+
+def _create_color_mask(image, color_range, to_bgr=True):
+    """照搬原项目 image_utils.create_color_mask"""
+    lower, upper = _color_range_to_bound(color_range)
+    match_mask = cv2.inRange(image, lower, upper)
+    if not to_bgr:
+        return match_mask
+    return cv2.cvtColor(match_mask, cv2.COLOR_GRAY2BGR)
+
+
+def _morphology_mask(mask, kernel_size=3, to_bgr=True):
+    """照搬原项目 image_utils.morphology_mask"""
+    import numpy as np
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    result = cv2.dilate(mask, kernel, iterations=1)
+    if to_bgr and len(result.shape) == 2:
+        result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
+    return result
+
+
+# 照搬原项目 interac_pink_color
+_INTERAC_PINK = {"r": (197, 221), "g": (71, 78), "b": (119, 133)}
+
+
+def _interac_mask(image):
+    """照搬原项目 BaseNTETask.interac_mask"""
+    mask = _create_color_mask(image, _INTERAC_PINK, to_bgr=False)
+    return _morphology_mask(mask, kernel_size=5, to_bgr=True)
+
+
+def _mask_corners(image, ratio_w=0.5555, ratio_h=0.8571, to_bgr=True):
+    """照搬原项目 image_utils.mask_corners
+    将左上角和右下角三角形涂黑，其余白色"""
+    import numpy as np
+    h, w = image.shape[:2]
+    x_left = int(w * ratio_w)
+    x_right = int(w * (1 - ratio_w))
+    y_top = int(h * ratio_h)
+    y_bottom = int(h * (1 - ratio_h))
+    contours = [
+        np.array([[0, 0], [x_left, 0], [0, y_top]], dtype=np.int32),
+        np.array([[w, h], [x_right, h], [w, y_bottom]], dtype=np.int32),
+    ]
+    mask_shape = image.shape if to_bgr else image.shape[:2]
+    white = np.ones(mask_shape, dtype=np.uint8) * 255
+    fill_color = (0, 0, 0) if to_bgr else 0
+    return cv2.fillPoly(white, contours, fill_color)
 
 
 def emit(**kw):
@@ -52,15 +109,21 @@ def cmd_screenshot(args):
 
 
 def cmd_check_in_team(args):
+    """检测是否在队伍中 - 照搬原项目 is_in_team():
+    find_one(health_bar_slash, mask_function=mask_corners,
+             horizontal_variance=0.01, vertical_variance=0.005)
+    """
     if not cap.init():
         emit(ok=False, error="找不到游戏窗口")
         return
     mat.init()
-    frame = cap.get_frame_gray()
+    frame = cap.get_frame_bgr()
     if frame is None:
         emit(ok=False, error="截图失败")
         return
-    r = mat.find("health_bar_slash", frame)
+    r = mat.find("health_bar_slash", frame,
+                 horizontal_variance=0.01, vertical_variance=0.005,
+                 mask_function=_mask_corners)
     if r:
         emit(ok=True, in_team=True, pos_x=r[0], pos_y=r[1], pos_w=r[2], pos_h=r[3], score=r[4])
     else:
@@ -68,15 +131,34 @@ def cmd_check_in_team(args):
 
 
 def cmd_check_interac(args):
+    """检测交互图标 - 照搬原项目 find_interac():
+    find_one(interactable, box=interac_box, threshold=0.7,
+             mask_function=interac_mask, use_gray_scale=True)
+    """
     if not cap.init():
         emit(ok=False, error="找不到游戏窗口")
         return
     mat.init()
-    frame = cap.get_frame_gray()
+    frame = cap.get_frame_bgr()
     if frame is None:
         emit(ok=False, error="截图失败")
         return
-    r = mat.find("interactable", frame)
+
+    # 照搬原项目 interac_box: 从模板位置扩展搜索区域
+    tpl_info = mat._templates.get("interactable")
+    search_box = None
+    if tpl_info:
+        bx, by, bw, bh = tpl_info["x"], tpl_info["y"], tpl_info["w"], tpl_info["h"]
+        search_box = {
+            "x": max(0, round(bx - bw * 0.3)),
+            "y": max(0, round(by - bh * 2.5)),
+            "w": round(bw * 1.6),
+            "h": round(bh * 5),
+        }
+
+    r = mat.find("interactable", frame, threshold=0.7,
+                 box=search_box, mask_function=_interac_mask,
+                 use_gray_scale=True)
     if r:
         emit(ok=True, found=True, pos_x=r[0], pos_y=r[1], pos_w=r[2], pos_h=r[3], score=r[4])
     else:

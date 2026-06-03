@@ -149,7 +149,7 @@ def find(name, frame, threshold=0.7, use_gray_scale=False,
         horizontal_variance: 水平搜索区域扩展比例
         vertical_variance: 垂直搜索区域扩展比例
         box: 搜索区域 dict {"x","y","w","h"}
-        mask_function: 掩码函数
+        mask_function: 掩码函数 (接收 BGR 模板，返回掩码)
         match_method: OpenCV 匹配方法
 
     Returns:
@@ -192,26 +192,38 @@ def find(name, frame, threshold=0.7, use_gray_scale=False,
     if search_area.shape[0] < tpl_h or search_area.shape[1] < tpl_w:
         return None
 
-    # 灰度转换
-    search_for_match = search_area
-    template_for_match = template
+    # 灰度转换（照搬原项目：先转灰度，再处理 mask）
     if use_gray_scale:
         if len(search_area.shape) != 2:
-            search_for_match = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
+            search_area = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
         if len(template.shape) != 2:
-            template_for_match = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
 
-    # 掩码
+    # 掩码（照搬原项目：mask_function 接收原始 BGR 模板）
     mask = None
     if mask_function is not None:
-        tpl_mat = template if len(template.shape) != 2 else cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
-        mask = mask_function(tpl_mat)
+        # 用原始 BGR 模板生成掩码
+        original_tpl = tpl["mat"]
+        mask = mask_function(original_tpl)
+        # 如果 search_area 是灰度图，确保 mask 和 template 维度一致
+        if len(search_area.shape) == 2 and mask is not None and len(mask.shape) == 3:
+            # 灰度匹配 + BGR mask: 将 template 和 search_area 转回 BGR
+            search_area = cv2.cvtColor(search_area, cv2.COLOR_GRAY2BGR)
+            template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR) if len(template.shape) == 2 else template
+
+    # 确保 search_area 和 template 维度一致
+    if search_area.dtype != template.dtype:
+        template = template.astype(search_area.dtype)
+    if search_area.ndim == 3 and template.ndim == 2:
+        template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
+    elif search_area.ndim == 2 and template.ndim == 3:
+        search_area = cv2.cvtColor(search_area, cv2.COLOR_GRAY2BGR)
 
     # 模板匹配
     if mask is not None:
-        result = cv2.matchTemplate(search_for_match, template_for_match, match_method, mask=mask)
+        result = cv2.matchTemplate(search_area, template, match_method, mask=mask)
     else:
-        result = cv2.matchTemplate(search_for_match, template_for_match, match_method)
+        result = cv2.matchTemplate(search_area, template, match_method)
 
     result[np.isinf(result)] = 0
     result[np.isnan(result)] = 0
