@@ -113,72 +113,59 @@ WaitFor(check_func, timeout := 10000, interval := 500, pre_action := "") {
 }
 
 ; === 进入副本（完全照搬原项目 enter_heist）===
-; 原项目流程：
-;   1. 等待 find_interac（F提示出现）
-;   2. if not in_team: click(0.727, 0.471) 打开面板
-;      else: send_key("f") 按F
-;   3. 等待 "挑战时间" 面板出现 (in_panel)
-;   4. sleep(0.5)
-;   5. 等待面板消失，期间点击 (0.7734, 0.8824) = 开始按钮
-;   6. sleep(0.5)
 EnterHeist() {
     global IsRunning
 
     Log("进入副本...")
 
-    ; --- step 2: 触发交互 ---
-    ; 原项目: if not in_team → click, else → send_key("f")
-    if !InTeam() {
-        ; 不在队伍界面（在主菜单），点击面板上的 NPC
-        Log("点击NPC面板...")
-        GameClick(0.727, 0.471)
-        Sleep(200)
-    } else {
-        ; 在队伍界面（在大世界），按F
-        Log("按F交互...")
-        Key("f", 100)
-    }
+    ; --- step 1: 直接按F触发交互（站在NPC旁边，一定在队伍界面）---
+    Log("按F交互...")
+    Key("f", 100)
+    Sleep(200)
+    if !IsRunning
+        return false
 
-    ; --- step 3: 等待 "挑战时间" 面板出现 ---
-    ; 原项目: wait_until(in_panel, pre_action=action, time_out=20)
-    ; action 里面: if not in_team → click(0.727,0.471), else → send_key("f")
+    ; --- step 2: 等待 "挑战时间" 面板出现 ---
+    ; pre_action: 每隔2秒重新按F（不在队伍界面则点击NPC）
     Log("等待副本面板...")
-    if !WaitFor(HasHeistPanel, 20000, 1000, () => _enterHeistPreAction()) {
+    global _lastPreAction := 0
+    if !WaitFor(HasHeistPanel, 20000, 500, () => _enterHeistPreAction()) {
         Log("副本面板未出现")
         return false
     }
+    if !IsRunning
+        return false
 
-    ; --- step 4 ---
-    ; 原项目: self.sleep(0.5)
+    ; --- step 3: 面板出现了，sleep(0.5) ---
     Sleep(500)
+    if !IsRunning
+        return false
 
-    ; --- step 5: 点击"开始"按钮，等待面板消失 ---
-    ; 原项目: wait_until(lambda: not in_panel(), pre_action=click(0.7734, 0.8824), time_out=20)
-    ; (0.7734, 0.8824) = "开始挑战" 按钮
+    ; --- step 4: 点击"开始"按钮 (0.7734, 0.8824)，等待面板消失 ---
     Log("点击开始按钮...")
     if !WaitFor(() => !HasHeistPanel(), 20000, 1000, () => GameClick(0.7734, 0.8824)) {
         Log("开始按钮点击超时")
         return false
     }
+    if !IsRunning
+        return false
 
-    ; --- step 6 ---
-    ; 原项目: self.sleep(0.5)
+    ; --- step 5: sleep(0.5) ---
     Sleep(500)
     Log("副本进入中...")
     return true
 }
 
-; enter_heist 的 pre_action：持续尝试触发交互直到面板出现
+; pre_action：每2秒重发一次F（节流，避免频繁启动 Python）
 _enterHeistPreAction() {
-    global IsRunning
+    global IsRunning, _lastPreAction
     if !IsRunning
         return
-    if !InTeam() {
-        GameClick(0.727, 0.471)
-    } else {
-        Key("f", 100)
-    }
-    Sleep(100)
+    now := A_TickCount
+    if now - _lastPreAction < 2000
+        return
+    _lastPreAction := now
+    Key("f", 100)
 }
 
 ; === 等待副本加载完成（照搬 _wait_until_heist_loaded）===
