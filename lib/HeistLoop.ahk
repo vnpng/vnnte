@@ -18,50 +18,104 @@ ActivateGame() {
     try WinActivate("ahk_class " GAME_CLASS)
 }
 
+; === VK 码映射 ===
+_VK := Map(
+    "w", 0x57, "a", 0x41, "s", 0x53, "d", 0x44,
+    "f", 0x46, "esc", 0x1B, "space", 0x20,
+    "lshift", 0xA0, "1", 0x31, "2", 0x32, "3", 0x33, "4", 0x34,
+    "lctrl", 0xA2, "e", 0x45, "q", 0x51, "tab", 0x09
+)
+
+_GetVK(key) {
+    global _VK
+    k := StrLower(key)
+    return _VK.Has(k) ? _VK[k] : GetKeySC(key)
+}
+
 ; === 坐标转换：原项目用 0~1 比例坐标，这里转成屏幕绝对像素 ===
 GameClick(rx, ry) {
-    ; rx, ry 是 0~1 的比例坐标（基于 1920x1080）
-    ; 需要根据游戏窗口的实际位置和尺寸转换
-    ActivateGame()
+    global IsRunning
+    if !IsRunning
+        return
+    ; 短暂激活窗口 → 点击 → 立即恢复前一窗口
     try {
+        prev := WinGetID("A")
+        ActivateGame()
+        Sleep(30)
         hwnd := WinGetID("ahk_class " GAME_CLASS)
         coord := WinGetPos("ahk_id " hwnd)
-        ; coord 返回 {X, Y, Width, Height}
         actualX := coord.X + Round(rx * coord.Width)
         actualY := coord.Y + Round(ry * coord.Height)
         Click(actualX, actualY)
+        Sleep(30)
+        try WinActivate("ahk_id " prev)
     } catch {
-        ; 窗口找不到就用 1920x1080 的绝对坐标
         Click(Round(rx * 1920), Round(ry * 1080))
     }
 }
 
-; === 按键辅助 ===
+; === 按键辅助（PostMessage 后台发送，不需要激活窗口）===
 Key(key, duration := 50) {
     global IsRunning
     if !IsRunning
         return
-    ActivateGame()
-    SendInput("{" key " down}")
-    Sleep(duration)
-    SendInput("{" key " up}")
+    try {
+        hwnd := WinGetID("ahk_class " GAME_CLASS)
+        vk := _GetVK(key)
+        sc := GetKeySC(key) || 0
+        lParamDown := 1 | (sc << 16)
+        lParamUp := 1 | (sc << 16) | 0xC0000000
+        PostMessage(0x100, vk, lParamDown, , "ahk_id " hwnd)
+        Sleep(duration)
+        PostMessage(0x101, vk, lParamUp, , "ahk_id " hwnd)
+    } catch {
+        ; 回退：SendInput 需要前台
+        ActivateGame()
+        SendInput("{" key " down}")
+        Sleep(duration)
+        SendInput("{" key " up}")
+    }
 }
 
 KeyDown(key) {
     global IsRunning
     if !IsRunning
         return
-    ActivateGame()
-    SendInput("{" key " down}")
+    try {
+        hwnd := WinGetID("ahk_class " GAME_CLASS)
+        vk := _GetVK(key)
+        sc := GetKeySC(key) || 0
+        lParamDown := 1 | (sc << 16)
+        PostMessage(0x100, vk, lParamDown, , "ahk_id " hwnd)
+    } catch {
+        ActivateGame()
+        SendInput("{" key " down}")
+    }
 }
 
 KeyUp(key) {
-    SendInput("{" key " up}")
+    try {
+        hwnd := WinGetID("ahk_class " GAME_CLASS)
+        vk := _GetVK(key)
+        sc := GetKeySC(key) || 0
+        lParamUp := 1 | (sc << 16) | 0xC0000000
+        PostMessage(0x101, vk, lParamUp, , "ahk_id " hwnd)
+    } catch {
+        try SendInput("{" key " up}")
+    }
 }
 
 ReleaseAllKeys() {
-    for _, k in ["w","a","s","d","f","space","lshift","esc","1","2","3","4"] {
-        try SendInput("{" k " up}")
+    try {
+        hwnd := WinGetID("ahk_class " GAME_CLASS)
+        for _, k in ["w","a","s","d","f","space","lshift","esc","1","2","3","4"] {
+            try {
+                vk := _GetVK(k)
+                sc := GetKeySC(k) || 0
+                lParamUp := 1 | (sc << 16) | 0xC0000000
+                PostMessage(0x101, vk, lParamUp, , "ahk_id " hwnd)
+            }
+        }
     }
 }
 
@@ -178,7 +232,7 @@ WaitHeistLoaded() {
 
     Log("等待副本加载...")
     ; step 1: 等 in_heist 变 true（最长 600s，因为有加载+跳过对话）
-    ; 期间不断检查跳过对话
+    ; 期间不断检查跳过对话（照搬原项目 post_action=skip_dialog）
     if !WaitFor(InHeist, 600000, 2000, () => _skipDialogCheck()) {
         Log("加载超时 (step1)")
         return false
@@ -187,12 +241,13 @@ WaitHeistLoaded() {
         return false
 
     ; step 2: 等 in_heist 变 false（加载画面闪过）
-    WaitFor(() => !InHeist(), 60000, 2000)
+    ; 期间也检查跳过
+    WaitFor(() => !InHeist(), 60000, 2000, () => _skipDialogCheck())
     if !IsRunning
         return false
 
     ; step 3: 再等 in_heist 变 true（正式进入副本）
-    if !WaitFor(InHeist, 60000, 2000) {
+    if !WaitFor(InHeist, 60000, 2000, () => _skipDialogCheck()) {
         Log("加载超时 (step3)")
         return false
     }
@@ -203,14 +258,65 @@ WaitHeistLoaded() {
     return true
 }
 
-; 跳过对话检查（简化版 SkipDialogTask）
+; 跳过对话检查（照搬原项目 SkipDialogTask.check_skip）
+; 原项目每 0.5s 触发一次，这里每次 WaitFor 间隔 2s 检查
 _skipDialogCheck() {
     global IsRunning
     if !IsRunning
         return
-    ; 点击屏幕中央偏下尝试跳过对话
-    ; 原项目用 SkipDialogTask 检测特定 UI 元素，这里简化为偶尔点击
-    ; 不做任何操作，让游戏自己处理
+    TrySkipDialog()
+}
+
+HasQuitDialog() {
+    r := RunPython("check_quit_dialog")
+    return r.HasOwnProp("found") && r.found
+}
+
+HasSumPanel() {
+    r := RunPython("check_sum_panel")
+    return r.HasOwnProp("found") && r.found
+}
+
+HasSkipBtn() {
+    r := RunPython("check_skip_btn")
+    return r.HasOwnProp("found") && r.found
+}
+
+; === 跳过对话（照搬 SkipDialogTask）===
+; 原项目流程:
+;   1. find_skip() → 找到"跳过"按钮
+;   2. click skip
+;   3. 弹出"确认跳过"对话框
+;   4. click confirm (0.4508, 0.5194)
+TrySkipDialog() {
+    global IsRunning
+    if !IsRunning
+        return false
+
+    ; 检测右上角"跳过"按钮
+    if HasSkipBtn() {
+        Log("点击跳过...")
+        GameClick(0.92, 0.05)
+        Sleep(500)
+        if !IsRunning
+            return true
+
+        ; 点击"确认跳过"对话框的确认按钮
+        ; 原项目: click(0.4508, 0.5194)
+        GameClick(0.4508, 0.5194)
+        Sleep(500)
+        Log("已跳过对话")
+        return true
+    }
+
+    ; 也检查"确认跳过"对话框（可能已经点过跳过按钮了）
+    if HasQuitDialog() {
+        GameClick(0.4508, 0.5194)
+        Sleep(300)
+        return true
+    }
+
+    return false
 }
 
 ; === 退出副本（照搬 exit_heist）===
@@ -286,25 +392,54 @@ _isInTeamOutsideHeist() {
     return InTeam() && !InHeist()
 }
 
-; === 强制退出副本（ESC）===
+; === 强制退出副本（完全照搬原项目 abort_heist）===
+; 原项目流程：
+;   1. wait_until(in_team_outside_heist || find_quit_dialog, pre_action=send_esc, time_out=60)
+;   2. if already outside: return
+;   3. wait_ocr "确认" 按钮 (0.50, 0.60, 0.70, 0.70)
+;   4. wait_until(not find_quit_dialog, pre_action=click confirm, time_out=60)
+;   5. wait_in_team(60)
 AbortHeist() {
     global IsRunning, HeistFail
     Log("强制退出副本...")
     HeistFail++
     UpdateLog("失败次数", HeistFail)
-    loop 10 {
-        if !IsRunning {
-            ReleaseAllKeys()
-            return
-        }
-        Key("esc", 100)
-        Sleep(2000)
-        if _isInTeamOutsideHeist() {
-            Log("已退出")
-            return
-        }
+
+    ; step 1: 按 ESC 直到退出对话框出现或已在队伍界面
+    if !WaitFor(() => _isInTeamOutsideHeist() || HasQuitDialog(), 60000, 2000, () => Key("esc", 100)) {
+        Log("ESC超时")
+        return
     }
-    Log("强制退出失败")
+    if !IsRunning
+        return
+
+    ; step 2: 如果已在队伍界面且不在副本中，直接返回
+    if _isInTeamOutsideHeist() {
+        Log("已在队伍界面，跳过退出")
+        return
+    }
+
+    ; step 3: 退出对话框出现了，点击"确认"按钮 (0.60, 0.65)
+    ; 原项目: wait_ocr "确认" (0.50, 0.60, 0.70, 0.70)
+    Log("点击确认退出...")
+    Sleep(500)
+    GameClick(0.60, 0.65)
+    Sleep(1000)
+    if !IsRunning
+        return
+
+    ; step 4: 等待对话框消失
+    WaitFor(() => !HasQuitDialog(), 60000, 2000, () => GameClick(0.60, 0.65))
+    if !IsRunning
+        return
+
+    ; step 5: 等待回到队伍界面
+    Log("等待回到队伍界面...")
+    WaitFor(InTeam, 60000, 2000)
+    if !IsRunning
+        return
+
+    Log("已退出副本")
 }
 
 ; === 单轮劫案（照搬 _run_heist_round）===
@@ -359,8 +494,8 @@ RunHeistRound() {
     if !IsRunning
         return
 
-    ; 5. 退出副本
-    ExitHeist()
+    ; 5. 退出副本（PathMin不走完整路径，用AbortHeist强制退出）
+    AbortHeist()
 }
 
 ; === 劫案主循环 ===

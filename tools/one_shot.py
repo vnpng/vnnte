@@ -160,6 +160,57 @@ def cmd_check_heist_panel(args):
     emit(ok=True, found=(ratio > 0.08), white_ratio=f"{ratio:.3f}")
 
 
+def cmd_check_quit_dialog(args):
+    """检测“确认退出”对话框（原项目区域: 0.4516, 0.3069, 0.5473, 0.3792）"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    import cv2
+    img = cap.screenshot()
+    arr = np.array(img)
+    x1, y1 = int(0.4516 * 1920), int(0.3069 * 1080)
+    x2, y2 = int(0.5473 * 1920), int(0.3792 * 1080)
+    roi = arr[y1:y2, x1:x2]
+    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
+    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+    ratio = np.sum(white == 255) / white.size
+    emit(ok=True, found=(ratio > 0.10), white_ratio=f"{ratio:.3f}")
+
+
+def cmd_check_sum_panel(args):
+    """检测结算面板（'退出'按钮区域: 0.4496, 0.8354, 0.5547, 0.8868）"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    import cv2
+    img = cap.screenshot()
+    arr = np.array(img)
+    x1, y1 = int(0.4496 * 1920), int(0.8354 * 1080)
+    x2, y2 = int(0.5547 * 1920), int(0.8868 * 1080)
+    roi = arr[y1:y2, x1:x2]
+    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
+    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+    ratio = np.sum(white == 255) / white.size
+    emit(ok=True, found=(ratio > 0.10), white_ratio=f"{ratio:.3f}")
+
+
+def cmd_check_skip_btn(args):
+    """检测右上角'跳过'按钮（大致区域: 0.87, 0.02, 0.97, 0.08）"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    import cv2
+    img = cap.screenshot()
+    arr = np.array(img)
+    x1, y1 = int(0.87 * 1920), int(0.02 * 1080)
+    x2, y2 = int(0.97 * 1920), int(0.08 * 1080)
+    roi = arr[y1:y2, x1:x2]
+    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
+    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+    ratio = np.sum(white == 255) / white.size
+    emit(ok=True, found=(ratio > 0.05), white_ratio=f"{ratio:.3f}")
+
+
 def main():
     p = argparse.ArgumentParser()
     s = p.add_subparsers(dest="cmd")
@@ -171,6 +222,9 @@ def main():
     s.add_parser("check_extract_panel")
     s.add_parser("check_red_health")
     s.add_parser("check_heist_panel")
+    s.add_parser("check_quit_dialog")
+    s.add_parser("check_sum_panel")
+    s.add_parser("check_skip_btn")
     args = p.parse_args()
     handlers = {
         "screenshot": cmd_screenshot,
@@ -181,6 +235,9 @@ def main():
         "check_extract_panel": cmd_check_extract_panel,
         "check_red_health": cmd_check_red_health,
         "check_heist_panel": cmd_check_heist_panel,
+        "check_quit_dialog": cmd_check_quit_dialog,
+        "check_sum_panel": cmd_check_sum_panel,
+        "check_skip_btn": cmd_check_skip_btn,
     }
     h = handlers.get(args.cmd)
     if h:
