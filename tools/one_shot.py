@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 
 import cv.capture as cap
 import cv.matcher as mat
+import cv.ocr as ocr_mod
 
 
 def emit(**kw):
@@ -106,23 +107,18 @@ def cmd_check_heist(args):
 
 
 def cmd_check_extract_panel(args):
-    """检测安全撤离面板（OCR 在屏幕指定区域查找'安全撤离'）"""
+    """检测安全撤离面板 - 照搬原项目: ocr(0.2602, 0.2639, 0.3520, 0.3257, match='安全撤离')"""
     if not cap.init():
         emit(ok=False, error="找不到游戏窗口")
         return
-    import cv2
-    img = cap.screenshot()
-    arr = np.array(img)
-    # 安全撤离面板的大致区域（相对 1920x1080）
-    x1, y1 = int(0.260 * 1920), int(0.264 * 1080)
-    x2, y2 = int(0.352 * 1920), int(0.326 * 1080)
-    roi = arr[y1:y2, x1:x2]
-    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
-    # 简单白色文字检测：看白色像素占比
-    _, white = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-    ratio = np.sum(white == 255) / white.size
-    # 粗略判断：白色像素多则可能有文字
-    emit(ok=True, found=(ratio > 0.05), white_ratio=f"{ratio:.3f}")
+    frame = cap.get_frame_bgr()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    region = ocr_mod.crop_region(frame, 0.2602, 0.2639, 0.3520, 0.3257)
+    found = ocr_mod.ocr(region, match="安全撤离")
+    texts = ocr_mod.ocr_texts(region)
+    emit(ok=True, found=found, texts=texts)
 
 
 def cmd_check_red_health(args):
@@ -143,72 +139,93 @@ def cmd_check_red_health(args):
 
 
 def cmd_check_heist_panel(args):
-    """检测副本面板是否出现（'挑战时间' 文字区域）"""
+    """检测副本面板 - 照搬原项目: ocr(0.625, 0.483, 0.685, 0.525, match='挑战时间')"""
     if not cap.init():
         emit(ok=False, error="找不到游戏窗口")
         return
-    import cv2
-    img = cap.screenshot()
-    arr = np.array(img)
-    # 原项目 OCR 区域: (0.625, 0.483, 0.685, 0.525)
-    x1, y1 = int(0.625 * 1920), int(0.483 * 1080)
-    x2, y2 = int(0.685 * 1920), int(0.525 * 1080)
-    roi = arr[y1:y2, x1:x2]
-    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
-    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-    ratio = np.sum(white == 255) / white.size
-    emit(ok=True, found=(ratio > 0.08), white_ratio=f"{ratio:.3f}")
+    frame = cap.get_frame_bgr()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    region = ocr_mod.crop_region(frame, 0.625, 0.483, 0.685, 0.525)
+    found = ocr_mod.ocr(region, match="挑战时间")
+    texts = ocr_mod.ocr_texts(region)
+    emit(ok=True, found=found, texts=texts)
 
 
 def cmd_check_quit_dialog(args):
-    """检测“确认退出”对话框（原项目区域: 0.4516, 0.3069, 0.5473, 0.3792）"""
+    """检测“确认退出”对话框 - 照搬原项目: ocr(0.4516, 0.3069, 0.5473, 0.3792, match='确认退出')"""
     if not cap.init():
         emit(ok=False, error="找不到游戏窗口")
         return
-    import cv2
-    img = cap.screenshot()
-    arr = np.array(img)
-    x1, y1 = int(0.4516 * 1920), int(0.3069 * 1080)
-    x2, y2 = int(0.5473 * 1920), int(0.3792 * 1080)
-    roi = arr[y1:y2, x1:x2]
-    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
-    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-    ratio = np.sum(white == 255) / white.size
-    emit(ok=True, found=(ratio > 0.10), white_ratio=f"{ratio:.3f}")
+    frame = cap.get_frame_bgr()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    region = ocr_mod.crop_region(frame, 0.4516, 0.3069, 0.5473, 0.3792)
+    found = ocr_mod.ocr(region, match="确认退出")
+    texts = ocr_mod.ocr_texts(region)
+    emit(ok=True, found=found, texts=texts)
 
 
 def cmd_check_sum_panel(args):
-    """检测结算面板（'退出'按钮区域: 0.4496, 0.8354, 0.5547, 0.8868）"""
+    """检测结算面板 - 照搬原项目: ocr(0.4496, 0.8354, 0.5547, 0.8868, match='退出')"""
     if not cap.init():
         emit(ok=False, error="找不到游戏窗口")
         return
-    import cv2
-    img = cap.screenshot()
-    arr = np.array(img)
-    x1, y1 = int(0.4496 * 1920), int(0.8354 * 1080)
-    x2, y2 = int(0.5547 * 1920), int(0.8868 * 1080)
-    roi = arr[y1:y2, x1:x2]
-    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
-    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-    ratio = np.sum(white == 255) / white.size
-    emit(ok=True, found=(ratio > 0.10), white_ratio=f"{ratio:.3f}")
+    frame = cap.get_frame_bgr()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    region = ocr_mod.crop_region(frame, 0.4496, 0.8354, 0.5547, 0.8868)
+    found = ocr_mod.ocr(region, match="退出")
+    texts = ocr_mod.ocr_texts(region)
+    emit(ok=True, found=found, texts=texts)
 
 
 def cmd_check_skip_btn(args):
-    """检测右上角'跳过'按钮（大致区域: 0.87, 0.02, 0.97, 0.08）"""
+    """检测跳过按钮 - 照搬原项目: find_one(skip_dialog, horizontal_variance=0.02, threshold=0.75)"""
     if not cap.init():
         emit(ok=False, error="找不到游戏窗口")
         return
-    import cv2
-    img = cap.screenshot()
-    arr = np.array(img)
-    x1, y1 = int(0.87 * 1920), int(0.02 * 1080)
-    x2, y2 = int(0.97 * 1920), int(0.08 * 1080)
-    roi = arr[y1:y2, x1:x2]
-    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
-    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-    ratio = np.sum(white == 255) / white.size
-    emit(ok=True, found=(ratio > 0.05), white_ratio=f"{ratio:.3f}")
+    mat.init()
+    frame = cap.get_frame_gray()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    r = mat.find("skip_dialog", frame, horizontal_variance=0.02, threshold=0.75)
+    if r:
+        emit(ok=True, found=True, pos_x=r[0], pos_y=r[1], pos_w=r[2], pos_h=r[3], score=r[4])
+    else:
+        emit(ok=True, found=False)
+
+
+def cmd_check_confirm(args):
+    """检测确认按钮 - 照搬原项目: find_confirm() = find_best_match_in_box(confirm_btn_1, confirm_btn_2)"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    mat.init()
+    frame = cap.get_frame_gray()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    # 原项目 find_confirm: 在 main_viewport 中查找 confirm_btn_1 或 confirm_btn_2
+    # main_viewport 大约是整个游戏画面
+    r1 = mat.find("confirm_btn_1", frame, threshold=0.8)
+    r2 = mat.find("confirm_btn_2", frame, threshold=0.8)
+    # 取分数最高的
+    best = None
+    if r1 and r2:
+        best = r1 if r1[4] >= r2[4] else r2
+    elif r1:
+        best = r1
+    elif r2:
+        best = r2
+    if best:
+        emit(ok=True, found=True, pos_x=best[0], pos_y=best[1], pos_w=best[2], pos_h=best[3], score=best[4])
+    else:
+        emit(ok=True, found=False)
 
 
 def main():
@@ -225,6 +242,7 @@ def main():
     s.add_parser("check_quit_dialog")
     s.add_parser("check_sum_panel")
     s.add_parser("check_skip_btn")
+    s.add_parser("check_confirm")
     args = p.parse_args()
     handlers = {
         "screenshot": cmd_screenshot,
@@ -238,6 +256,7 @@ def main():
         "check_quit_dialog": cmd_check_quit_dialog,
         "check_sum_panel": cmd_check_sum_panel,
         "check_skip_btn": cmd_check_skip_btn,
+        "check_confirm": cmd_check_confirm,
     }
     h = handlers.get(args.cmd)
     if h:

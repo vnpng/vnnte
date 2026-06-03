@@ -7,3 +7,8 @@ ok-nte-ref/
 repowiki/
 *.egg-info/
 .venv/
+temp_pkg/
+assets/esper_icons/esper_icons/
+assets/sponsor/sponsor/
+assets/openvino/
+assets/sounds/

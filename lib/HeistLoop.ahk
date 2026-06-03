@@ -279,38 +279,69 @@ HasSumPanel() {
 
 HasSkipBtn() {
     r := RunPython("check_skip_btn")
-    return r.HasOwnProp("found") && r.found
+    if r.HasOwnProp("found") && r.found
+        return r
+    return false
+}
+
+HasConfirm() {
+    r := RunPython("check_confirm")
+    if r.HasOwnProp("found") && r.found
+        return r
+    return false
 }
 
 ; === 跳过对话（照搬 SkipDialogTask）===
 ; 原项目流程:
-;   1. find_skip() → 找到"跳过"按钮
-;   2. click skip
+;   1. find_skip() → 找到"跳过"按钮模板
+;   2. operate_click(skip) → 点击跳过按钮位置
 ;   3. 弹出"确认跳过"对话框
-;   4. click confirm (0.4508, 0.5194)
+;   4. find_confirm() → 找到确认按钮模板
+;   5. click(0.4508, 0.5194) → 点击对话框区域
+;   6. operate_click(confirm_btn) → 点击确认按钮
 TrySkipDialog() {
     global IsRunning
     if !IsRunning
         return false
 
-    ; 检测右上角"跳过"按钮
-    if HasSkipBtn() {
+    ; 检测右上角"跳过"按钮（照搬原项目 find_skip 模板匹配）
+    skipResult := HasSkipBtn()
+    if skipResult {
         Log("点击跳过...")
-        GameClick(0.92, 0.05)
-        Sleep(500)
+        ; 原项目: operate_click(skip) = 点击模板匹配到的位置
+        ; 计算中心点并转为相对坐标
+        rx := (skipResult.pos_x + skipResult.pos_w / 2) / 1920
+        ry := (skipResult.pos_y + skipResult.pos_h / 2) / 1080
+        GameClick(rx, ry)
+        Sleep(400)
         if !IsRunning
             return true
 
-        ; 点击"确认跳过"对话框的确认按钮
-        ; 原项目: click(0.4508, 0.5194)
-        GameClick(0.4508, 0.5194)
-        Sleep(500)
+        ; 原项目 skip_confirm():
+        ; 1. find_confirm() 查找确认按钮
+        ; 2. click(0.4508, 0.5194) 点击对话框区域
+        ; 3. operate_click(confirm_btn) 点击确认按钮
+        confirmResult := HasConfirm()
+        if confirmResult {
+            GameClick(0.4508, 0.5194)
+            Sleep(400)
+            ; 点击确认按钮的实际位置
+            crx := (confirmResult.pos_x + confirmResult.pos_w / 2) / 1920
+            cry := (confirmResult.pos_y + confirmResult.pos_h / 2) / 1080
+            GameClick(crx, cry)
+            Sleep(500)
+        } else {
+            ; 找不到确认按钮模板，回退到固定坐标
+            GameClick(0.4508, 0.5194)
+            Sleep(500)
+        }
         Log("已跳过对话")
         return true
     }
 
     ; 也检查"确认跳过"对话框（可能已经点过跳过按钮了）
-    if HasQuitDialog() {
+    confirmResult := HasConfirm()
+    if confirmResult {
         GameClick(0.4508, 0.5194)
         Sleep(300)
         return true

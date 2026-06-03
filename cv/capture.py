@@ -71,3 +71,10 @@ def get_frame_gray():
     img = screenshot()
     arr = np.array(img)
     return cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+
+
+def get_frame_bgr():
+    """获取当前游戏画面，缩放到 1920x1080 后转 BGR numpy 数组（用于 OCR）"""
+    img = screenshot()
+    arr = np.array(img)
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
