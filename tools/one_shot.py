@@ -142,6 +142,24 @@ def cmd_check_red_health(args):
         emit(ok=True, found=False)
 
 
+def cmd_check_heist_panel(args):
+    """检测副本面板是否出现（'挑战时间' 文字区域）"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    import cv2
+    img = cap.screenshot()
+    arr = np.array(img)
+    # 原项目 OCR 区域: (0.625, 0.483, 0.685, 0.525)
+    x1, y1 = int(0.625 * 1920), int(0.483 * 1080)
+    x2, y2 = int(0.685 * 1920), int(0.525 * 1080)
+    roi = arr[y1:y2, x1:x2]
+    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
+    _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+    ratio = np.sum(white == 255) / white.size
+    emit(ok=True, found=(ratio > 0.08), white_ratio=f"{ratio:.3f}")
+
+
 def main():
     p = argparse.ArgumentParser()
     s = p.add_subparsers(dest="cmd")
@@ -152,6 +170,7 @@ def main():
     s.add_parser("check_heist")
     s.add_parser("check_extract_panel")
     s.add_parser("check_red_health")
+    s.add_parser("check_heist_panel")
     args = p.parse_args()
     handlers = {
         "screenshot": cmd_screenshot,
@@ -161,6 +180,7 @@ def main():
         "check_heist": cmd_check_heist,
         "check_extract_panel": cmd_check_extract_panel,
         "check_red_health": cmd_check_red_health,
+        "check_heist_panel": cmd_check_heist_panel,
     }
     h = handlers.get(args.cmd)
     if h:
