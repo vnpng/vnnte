@@ -214,18 +214,7 @@ SwitchPanel(panelId, funcId) {
     }
 }
 
-StartPinkClaw() {
-    global IsRunning, StartBtn
-    if IsRunning {
-        IsRunning := false
-        StartBtn.Text := "开始"
-        Log("已停止")
-    } else {
-        IsRunning := true
-        StartBtn.Text := "停止"
-        RunSmokeTest()
-    }
-}
+; StartPinkClaw 在 HeistLoop.ahk 中定义
 
 UpdateLog(name, value) {
     global LogLV

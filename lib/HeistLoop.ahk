@@ -11,15 +11,26 @@ global HeistFail := 0
 global HeistTotalCash := 0
 global HeistTotalCoin := 0
 
+; === 游戏窗口 ===
+GAME_CLASS := "UnrealWindow"
+
+ActivateGame() {
+    ; 激活游戏窗口，确保按键能发到游戏
+    try WinActivate("ahk_class " GAME_CLASS)
+    Sleep(100)
+}
+
 ; === 按键辅助 ===
 Key(key, duration := 50) {
     ; 短按：按下 duration ms 后松开
+    ActivateGame()
     SendInput("{" key " down}")
     Sleep(duration)
     SendInput("{" key " up}")
 }
 
 KeyDown(key) {
+    ActivateGame()
     SendInput("{" key " down}")
 }
 
@@ -29,7 +40,6 @@ KeyUp(key) {
 
 ; === 图像检测封装（调 Python）===
 CheckPython(cmd) {
-    ; 调用 one_shot.py，返回结果 Map
     return RunPython(cmd)
 }
 
@@ -60,12 +70,11 @@ HasRedHealthBar() {
 
 ; === 等待函数 ===
 WaitFor(check_func, timeout := 10000, interval := 500, pre_action := "") {
-    ; check_func: 函数对象，返回 true/false
-    ; timeout: 毫秒
-    ; interval: 检查间隔
-    ; pre_action: 每次检查前执行的函数（可选）
+    global IsRunning
     deadline := A_TickCount + timeout
     while A_TickCount < deadline {
+        if !IsRunning
+            return false
         if pre_action != "" {
             pre_action()
         }
@@ -79,11 +88,10 @@ WaitFor(check_func, timeout := 10000, interval := 500, pre_action := "") {
 
 ; === 进入副本 ===
 EnterHeist() {
+    global IsRunning
     Log("进入副本...")
-    ; 按 F 键触发交互
     Key("f", 100)
     Sleep(500)
-    ; 等待进入副本（in_heist 变 true）
     if !WaitFor(InHeist, 20000, 1000) {
         Log("进入副本超时")
         return false
@@ -94,8 +102,8 @@ EnterHeist() {
 
 ; === 退出副本 ===
 ExitHeist() {
+    global IsRunning, HeistSuccess
     Log("退出副本...")
-    ; 等待出现安全撤离面板或回到队伍界面
     if !WaitFor(() => InTeam() || HasExtractPanel(), 30000, 1000, () => Key("f", 100)) {
         Log("退出超时，强制退出")
         AbortHeist()
@@ -109,10 +117,9 @@ ExitHeist() {
     }
     ; 有安全撤离面板
     Sleep(1000)
-    ; 点击"安全撤离"按钮（屏幕中央偏下）
-    Click(960, 760)  ; 1920x1080 的 (0.5, 0.70)
+    ActivateGame()
+    Click(960, 760)
     Sleep(1000)
-    ; 等待回到队伍界面
     if !WaitFor(InTeam, 60000, 1000) {
         Log("等待回到队伍界面超时")
         AbortHeist()
@@ -126,6 +133,7 @@ ExitHeist() {
 
 ; === 强制退出副本（ESC 退出）===
 AbortHeist() {
+    global IsRunning, HeistFail
     Log("强制退出副本...")
     HeistFail++
     UpdateLog("失败次数", HeistFail)
@@ -150,6 +158,8 @@ RunHeistRound() {
     ; 1. 等待交互点
     Log("等待交互点...")
     if !WaitFor(FindInterac, 15000, 1000) {
+        if !IsRunning
+            return
         Log("未找到交互点")
         return
     }
@@ -161,7 +171,7 @@ RunHeistRound() {
         return
     }
 
-    ; 3. 等待加载完成（in_heist 稳定）
+    ; 3. 等待加载完成
     Sleep(3000)
     if !WaitFor(InHeist, 60000, 2000) {
         Log("加载超时")
@@ -170,7 +180,7 @@ RunHeistRound() {
     }
     Log("副本加载完成")
 
-    ; 4. 跑路径（最小版：goto_lg1 简化 + 直接退出）
+    ; 4. 跑路径（最小版）
     Log("执行路径...")
     try {
         RunPathMin()
@@ -200,14 +210,12 @@ RunHeistLoop() {
     Log("=== 自动粉爪开始 ===")
 
     loop {
-        if !IsRunning {
+        if !IsRunning
             break
-        }
         RunHeistRound()
-        if !IsRunning {
+        if !IsRunning
             break
-        }
-        Sleep(2000)  ; 轮间等待
+        Sleep(2000)
     }
 
     Log("=== 已停止 ===")
@@ -215,7 +223,7 @@ RunHeistLoop() {
     StartBtn.Text := "开始"
 }
 
-; === 启动入口（被 F10 或开始按钮调用）===
+; === 启动入口 ===
 StartPinkClaw() {
     global IsRunning
     if IsRunning {
@@ -223,5 +231,5 @@ StartPinkClaw() {
         Log("正在停止...")
         return
     }
-    SetTimer(RunHeistLoop, -100)  ; 异步启动，避免阻塞 GUI
+    SetTimer(RunHeistLoop, -100)
 }
