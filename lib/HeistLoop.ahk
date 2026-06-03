@@ -54,11 +54,14 @@ GameClick(rx, ry) {
     }
 }
 
-; === 按键辅助（PostMessage 后台发送，不需要激活窗口）===
-Key(key, duration := 50) {
+; === 按键辅助（照搬原项目 post_message.send_key：先激活窗口再 PostMessage）===
+; 原项目: send_key(key, down_time=0.01) → activate → WM_KEYDOWN → sleep(0.01) → WM_KEYUP
+Key(key, duration := 10) {
     global IsRunning
     if !IsRunning
         return
+    ActivateGame()
+    Sleep(20)
     try {
         hwnd := WinGetID("ahk_class " GAME_CLASS)
         vk := _GetVK(key)
@@ -68,12 +71,6 @@ Key(key, duration := 50) {
         PostMessage(0x100, vk, lParamDown, , "ahk_id " hwnd)
         Sleep(duration)
         PostMessage(0x101, vk, lParamUp, , "ahk_id " hwnd)
-    } catch {
-        ; 回退：SendInput 需要前台
-        ActivateGame()
-        SendInput("{" key " down}")
-        Sleep(duration)
-        SendInput("{" key " up}")
     }
 }
 
@@ -81,15 +78,14 @@ KeyDown(key) {
     global IsRunning
     if !IsRunning
         return
+    ActivateGame()
+    Sleep(20)
     try {
         hwnd := WinGetID("ahk_class " GAME_CLASS)
         vk := _GetVK(key)
         sc := GetKeySC(key) || 0
         lParamDown := 1 | (sc << 16)
         PostMessage(0x100, vk, lParamDown, , "ahk_id " hwnd)
-    } catch {
-        ActivateGame()
-        SendInput("{" key " down}")
     }
 }
 
@@ -100,15 +96,14 @@ KeyUp(key) {
         sc := GetKeySC(key) || 0
         lParamUp := 1 | (sc << 16) | 0xC0000000
         PostMessage(0x101, vk, lParamUp, , "ahk_id " hwnd)
-    } catch {
-        try SendInput("{" key " up}")
     }
 }
 
 ReleaseAllKeys() {
+    ; 不释放 esc，避免干扰游戏自身的按键处理（原项目不用 esc 做 PostMessage）
     try {
         hwnd := WinGetID("ahk_class " GAME_CLASS)
-        for _, k in ["w","a","s","d","f","space","lshift","esc","1","2","3","4"] {
+        for _, k in ["w","a","s","d","f","space","lshift","1","2","3","4"] {
             try {
                 vk := _GetVK(k)
                 sc := GetKeySC(k) || 0
