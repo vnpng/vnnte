@@ -1,4 +1,5 @@
 """单次命令：screenshot / check_in_team / check_interac / list_templates
+                check_heist / check_extract_panel / check_red_health
 供 AHK 通过 RunWait 调用，结果以 key=value 纯文本输出到 stdout。
 
 每行一个键值对：
@@ -8,6 +9,7 @@
 """
 import sys
 import argparse
+import numpy as np
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -86,6 +88,60 @@ def cmd_list_templates(args):
     emit(ok=True, count=len(tpls), templates=tpls)
 
 
+def cmd_check_heist(args):
+    """检测是否在副本内（左上角有 heist_timer 模板）"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    mat.init()
+    frame = cap.get_frame_gray()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    r = mat.find("heist_timer", frame, threshold=0.6)
+    if r:
+        emit(ok=True, in_heist=True, pos_x=r[0], pos_y=r[1], score=r[4])
+    else:
+        emit(ok=True, in_heist=False)
+
+
+def cmd_check_extract_panel(args):
+    """检测安全撤离面板（OCR 在屏幕指定区域查找'安全撤离'）"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    import cv2
+    img = cap.screenshot()
+    arr = np.array(img)
+    # 安全撤离面板的大致区域（相对 1920x1080）
+    x1, y1 = int(0.260 * 1920), int(0.264 * 1080)
+    x2, y2 = int(0.352 * 1920), int(0.326 * 1080)
+    roi = arr[y1:y2, x1:x2]
+    gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
+    # 简单白色文字检测：看白色像素占比
+    _, white = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+    ratio = np.sum(white == 255) / white.size
+    # 粗略判断：白色像素多则可能有文字
+    emit(ok=True, found=(ratio > 0.05), white_ratio=f"{ratio:.3f}")
+
+
+def cmd_check_red_health(args):
+    """检测红色血条（health_bar_slash 模板）"""
+    if not cap.init():
+        emit(ok=False, error="找不到游戏窗口")
+        return
+    mat.init()
+    frame = cap.get_frame_gray()
+    if frame is None:
+        emit(ok=False, error="截图失败")
+        return
+    r = mat.find("health_bar_slash", frame, threshold=0.5)
+    if r:
+        emit(ok=True, found=True, pos_x=r[0], pos_y=r[1], score=r[4])
+    else:
+        emit(ok=True, found=False)
+
+
 def main():
     p = argparse.ArgumentParser()
     s = p.add_subparsers(dest="cmd")
@@ -93,12 +149,18 @@ def main():
     s.add_parser("check_in_team")
     s.add_parser("check_interac")
     s.add_parser("list_templates")
+    s.add_parser("check_heist")
+    s.add_parser("check_extract_panel")
+    s.add_parser("check_red_health")
     args = p.parse_args()
     handlers = {
         "screenshot": cmd_screenshot,
         "check_in_team": cmd_check_in_team,
         "check_interac": cmd_check_interac,
         "list_templates": cmd_list_templates,
+        "check_heist": cmd_check_heist,
+        "check_extract_panel": cmd_check_extract_panel,
+        "check_red_health": cmd_check_red_health,
     }
     h = handlers.get(args.cmd)
     if h:

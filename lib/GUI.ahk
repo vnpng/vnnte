@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Include HeistLoop.ahk
 
 ; === 全局状态 ===
 global AppGUI := 0
@@ -338,7 +339,7 @@ RunPython(cmd) {
         v := SubStr(line, eq + 1)
         if (k = "ok") {
             result.ok := (v = "true")
-        } else if (k = "in_team" || k = "found") {
+        } else if (k = "in_team" || k = "found" || k = "in_heist") {
             result.%k% := (v = "true")
         } else {
             result.%k% := v
